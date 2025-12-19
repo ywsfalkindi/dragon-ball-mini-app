@@ -2,34 +2,48 @@ package middleware
 
 import (
 	"dragon-core/internal/auth"
+	"os"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 )
 
-// التوكن الخاص بك أصبح جاهزاً للعمل
-const BOT_TOKEN = "8561338309:AAG1WFHGJgsh4ZkKMWviAhUhJHK2qWKOdJg" 
-
 func Protected() fiber.Handler {
-    return func(c *fiber.Ctx) error {
-        authHeader := c.Get("Authorization")
+	return func(c *fiber.Ctx) error {
+		// استقبال التوكن من الـ Header
+		// الشكل المتوقع: "Bearer eyJhbGciOiJIUzI1NiIsIn..."
+		authHeader := c.Get("Authorization")
 
-        // --- إضافة وضع المطور (Backdoor) ---
-        // إذا كان التوكن هو "test-token-for-goku"، اسمح بالمرور فوراً
-        // هذا مفيد جداً للتجربة في المتصفح دون تعقيدات تليجرام
-        if authHeader == "test-token-for-goku" {
-            return c.Next()
-        }
-        // ----------------------------------
+		// --- التعامل مع الـ Backdoor بأمان ---
+		// نقرأ متغير البيئة لنعرف هل نحن في وضع التطوير؟
+		// APP_ENV يجب أن يكون "dev" في جهازك، و "prod" عند الرفع
+		appEnv := os.Getenv("APP_ENV") 
+		
+		if appEnv == "dev" && authHeader == "test-token-for-goku" {
+			// في وضع التطوير فقط نسمح بالمرور
+			// ونفترض أن المستخدم هو رقم 1 (لأغراض التست)
+			c.Locals("userID", uint(1))
+			return c.Next()
+		}
+		// ----------------------------------
 
-        if authHeader == "" {
-            return c.Status(401).JSON(fiber.Map{"status": "error", "message": "Who are you? No ID found! 🕵️‍♂️"})
-        }
+		if authHeader == "" {
+			return c.Status(401).JSON(fiber.Map{"status": "error", "message": "Missing Authorization Header"})
+		}
 
-        // ... بقية كود التحقق من تليجرام ...
-        isValid, err := auth.ValidateWebAppData(authHeader, BOT_TOKEN)
-        if err != nil || !isValid {
-            return c.Status(403).JSON(fiber.Map{"status": "error", "message": "Fake Saiyan Detected! Access Denied! 🚫"})
-        }
+		// تنظيف التوكن (حذف كلمة Bearer إذا وجدت)
+		tokenString := strings.Replace(authHeader, "Bearer ", "", 1)
 
-        return c.Next()
-    }
+		// التحقق من صحة التوكن
+		userID, err := auth.ValidateToken(tokenString)
+		if err != nil {
+			return c.Status(401).JSON(fiber.Map{"status": "error", "message": "Invalid or Expired Token"})
+		}
+
+		// أهم خطوة: تخزين رقم المستخدم في الـ Context
+		// لكي نستخدمه لاحقاً في ProcessAnswer بدون البحث عنه مجدداً
+		c.Locals("userID", userID)
+
+		return c.Next()
+	}
 }

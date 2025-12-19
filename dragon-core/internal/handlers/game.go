@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"dragon-core/internal/models"
 	"dragon-core/internal/repositories"
 	"dragon-core/internal/services"
 	"github.com/gofiber/fiber/v2"
@@ -28,21 +27,24 @@ func GetQuestion(c *fiber.Ctx) error {
 }
 
 func SubmitAnswer(c *fiber.Ctx) error {
-	// 1. استقبال البيانات (نضيف حقل الوقت time_taken)
-	// سنحتاج لتحديث AnswerRequest في ملف dto.go لاحقاً ليقبل الوقت
-	type RequestWithTime struct {
-		models.AnswerRequest
-		TimeTaken int `json:"time_taken"` // كم ثانية استغرق؟
-	}
+    // 1. استخراج هوية المستخدم المؤمنة من الـ Middleware
+    // (يجب تحويلها لأن Locals تخزنها كـ interface)
+    userIDFromToken := c.Locals("userID").(uint)
 
-	var req RequestWithTime
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"status": "error", "message": "Invalid input"})
-	}
+    type RequestWithTime struct {
+        // لم نعد نحتاج UserID هنا، نحذفه من الهيكل أو نتجاهله
+        QuestionID uint   `json:"question_id"`
+        Selected   string `json:"selected"`
+        TimeTaken  int    `json:"time_taken"`
+    }
 
-	// 2. استدعاء "المحرك" (Service)
-	// لاحظ كيف أصبح الهاندلر نظيفاً جداً! سطر واحد فقط
-	response, err := services.ProcessAnswer(req.UserID, req.QuestionID, req.Selected, req.TimeTaken)
+    var req RequestWithTime
+    if err := c.BodyParser(&req); err != nil {
+        return c.Status(400).JSON(fiber.Map{"status": "error", "message": "Invalid input"})
+    }
+
+    // 2. استخدام ID الموثوق به بدلاً من req.UserID
+    response, err := services.ProcessAnswer(userIDFromToken, req.QuestionID, req.Selected, req.TimeTaken)
 	
 	if err != nil {
 		// معالجة الأخطاء (مثل نفاذ الطاقة)

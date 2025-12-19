@@ -48,6 +48,10 @@ func main() {
 	app.Use(logger.New())
 
 	api := app.Group("/api")
+	
+	// هذا مسار عام (مفتوح للجميع) ليتمكنوا من تسجيل الدخول
+	api.Post("/login", handlers.Login) // <--- أضف هذا السطر الجديد
+
 	api.Get("/health", handlers.HealthCheck)
 	api.Get("/question", handlers.GetQuestion)
 	
