@@ -9,24 +9,27 @@ import (
 const BOT_TOKEN = "8561338309:AAG1WFHGJgsh4ZkKMWviAhUhJHK2qWKOdJg" 
 
 func Protected() fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		// 1. البحث عن التصريح في الـ Header
-		authHeader := c.Get("Authorization")
+    return func(c *fiber.Ctx) error {
+        authHeader := c.Get("Authorization")
 
-		if authHeader == "" {
-			return c.Status(401).JSON(fiber.Map{"status": "error", "message": "Who are you? No ID found! 🕵️‍♂️"})
-		}
+        // --- إضافة وضع المطور (Backdoor) ---
+        // إذا كان التوكن هو "test-token-for-goku"، اسمح بالمرور فوراً
+        // هذا مفيد جداً للتجربة في المتصفح دون تعقيدات تليجرام
+        if authHeader == "test-token-for-goku" {
+            return c.Next()
+        }
+        // ----------------------------------
 
-		// استخدمنا القيمة مباشرة دون الحاجة لمكتبة strings
-		initData := authHeader
+        if authHeader == "" {
+            return c.Status(401).JSON(fiber.Map{"status": "error", "message": "Who are you? No ID found! 🕵️‍♂️"})
+        }
 
-		// 2. التحقق من صحة البيانات
-		isValid, err := auth.ValidateWebAppData(initData, BOT_TOKEN)
+        // ... بقية كود التحقق من تليجرام ...
+        isValid, err := auth.ValidateWebAppData(authHeader, BOT_TOKEN)
+        if err != nil || !isValid {
+            return c.Status(403).JSON(fiber.Map{"status": "error", "message": "Fake Saiyan Detected! Access Denied! 🚫"})
+        }
 
-		if err != nil || !isValid {
-			return c.Status(403).JSON(fiber.Map{"status": "error", "message": "Fake Saiyan Detected! Access Denied! 🚫"})
-		}
-
-		return c.Next()
-	}
+        return c.Next()
+    }
 }
