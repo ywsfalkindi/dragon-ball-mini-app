@@ -1,11 +1,13 @@
+// src/api/client.js
 import axios from "axios";
 
-// إنشاء نسخة مخصصة من axios بإعداداتنا
 export const apiClient = axios.create({
-  baseURL: "http://localhost:3000/api", // عنوان السيرفر (Backend)
+  // إذا استخدمت نفقاً ثانياً للسيرفر (المنفذ 3000) ضع الرابط هنا
+  // أو استخدم IP جهازك إذا كان الهاتف والكمبيوتر على نفس الواي فاي
+  baseURL: "http://localhost:3000/api",
   headers: {
     "Content-Type": "application/json",
+    // هذا السطر مهم جداً إذا قررت البقاء مع ngrok للسيرفر
+    "ngrok-skip-browser-warning": "true",
   },
 });
-
-// ملاحظة: لاحقاً سنضيف هنا الـ Interceptors لوضع توكن الحماية تلقائياً

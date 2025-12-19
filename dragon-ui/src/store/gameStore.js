@@ -1,73 +1,82 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { apiClient } from "../api/client"; // استدعاء عميل الاتصال
+import { apiClient } from "../api/client";
 
 const useGameStore = create(
   persist(
     (set, get) => ({
-      // --- البيانات (State) ---
       user: null,
       energy: 10,
       score: 0,
+      currentQuestion: null,
 
-      // حالة السؤال الحالي
-      currentQuestion: null, // السؤال الذي يظهر الآن
-      isLoading: false, // هل نقوم بالتحميل الآن؟
-      error: null, // هل حدث خطأ؟
-
-      // --- الأفعال (Actions) ---
+      // حالات الواجهة (States)
+      isLoading: false, // هل غوكو يجمع الطاقة؟
+      error: null, // هل هزمنا فريزا؟
 
       setUser: (userData) => set({ user: userData }),
 
-      // 1. دالة جلب سؤال جديد من السيرفر
+      // دالة جلب السؤال
       fetchQuestion: async () => {
-        set({ isLoading: true, error: null }); // بدأ التحميل
+        set({ isLoading: true, error: null }); // 1. ابدأ التحميل وامسح أي خطأ سابق
         try {
-          // الطلب: GET /question
           const response = await apiClient.get("/question");
+          // محاكاة تأخير بسيط لنرى شاشة التحميل (اختياري)
+          // await new Promise(r => setTimeout(r, 1000));
 
-          // النجاح: نضع السؤال في الحالة
-          // response.data.data لأن الباك إند يرسل { status: success, data: { ... } }
-          set({ currentQuestion: response.data.data, isLoading: false });
+          set({ currentQuestion: response.data.data, isLoading: false }); // 2. نجاح! أوقف التحميل
         } catch (err) {
-          console.error("Failed to fetch question:", err);
-          set({ error: "فشل الاتصال بكوكب ناميك!", isLoading: false });
+          console.error("Fetch Error:", err);
+          // 3. فشل! سجل الخطأ وأوقف التحميل
+          set({
+            error: "لا يمكن استشعار طاقة الكي! تأكد من تشغيل السيرفر.",
+            isLoading: false,
+          });
         }
       },
 
-      // 2. دالة إرسال الإجابة للسيرفر
-      submitAnswer: async (selectedOption) => {
-        const { user, currentQuestion } = get(); // نأخذ البيانات الحالية
+      // دالة إرسال الإجابة (تم تصحيح الرابط هنا)
+      submitAnswer: async (selectedOptionKey) => {
+        const { user, currentQuestion } = get();
         if (!user || !currentQuestion) return false;
 
+        // لاحظ: هنا لن نشغل isLoading لأننا نريد تفاعلاً فورياً،
+        // أو يمكننا تشغيله إذا أردنا منع اللاعب من الضغط مرتين.
+
         try {
-          // الطلب: POST /answer
-          // نرسل البيانات كما توقعناها في Go (Chapter 9)
           const payload = {
-            user_id: user.id, // الآيدي القادم من تليجرام
+            user_id: user.id,
             question_id: currentQuestion.id,
-            selected: selectedOption,
+            selected: selectedOptionKey,
+            time_taken: 5,
           };
 
-          const response = await apiClient.post("/answer", payload);
-          const result = response.data; // { correct: true, new_score: 100, ... }
+          // --- التصحيح الهام جداً في الرابط ---
+          // يجب أن نرسل التوكن أيضاً (لاحقاً)، والمسار الصحيح هو /protected/answer
+          // حالياً بما أننا لم نضبط التوكن في الفرونت إند، قد نحصل على 401.
+          // لكن دعنا نضبط المسار الصحيح أولاً:
+          const response = await apiClient.post("/protected/answer", payload);
 
-          // تحديث البيانات بناءً على رد السيرفر الحقيقي
+          const result = response.data;
           set({
-            score: result.new_score, // تحديث النقاط من السيرفر
-            energy: result.new_energy, // تحديث الطاقة من السيرفر
+            score: result.new_score,
+            energy: result.new_energy,
           });
 
-          return result.correct; // نرجع هل الإجابة صحيحة أم لا للواجهة
+          return result.correct;
         } catch (err) {
-          console.error("Attack failed:", err);
+          console.error("Answer Error:", err);
+          // هنا لا نوقف اللعبة كاملة، بل ربما نظهر تنبيهاً صغيراً
+          alert("فشل إرسال الهجمة! تحقق من اتصالك.");
           return false;
         }
       },
 
-      // دالة مساعدة لتقليل الطاقة محلياً (لو احتجنا تحديثاً فورياً قبل رد السيرفر)
       decreaseEnergy: (amount) =>
         set((state) => ({ energy: Math.max(0, state.energy - amount) })),
+
+      // دالة لإعادة المحاولة (تصفير الخطأ)
+      clearError: () => set({ error: null }),
     }),
     {
       name: "dragon-storage",
@@ -75,7 +84,7 @@ const useGameStore = create(
         user: state.user,
         score: state.score,
         energy: state.energy,
-      }), // لا نحفظ السؤال والتحميل
+      }),
     }
   )
 );
