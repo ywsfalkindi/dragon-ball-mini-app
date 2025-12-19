@@ -1,0 +1,28 @@
+:root {
+  /* ألوان دراغون بول الرسمية */
+  --db-orange: #ff9900;
+  --db-blue: #0000ff;
+  --saiyan-armor: #f5f5f5;
+  --energy-green: #39ff14; /* لون الطاقة المشع */
+  --danger-red: #ff0055;
+  --dark-bg: #1a1a1a;
+  --glass-bg: rgba(255, 255, 255, 0.1); /* تأثير الزجاج الشفاف */
+}
+
+body {
+  margin: 0;
+  background-color: #050505; /* أسود حالك مثل الفضاء */
+  color: white;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  overflow-x: hidden; /* لمنع ظهور شريط تمرير جانبي */
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  max-width: 500px; /* حجم مناسب للموبايل وتليجرام */
+  padding: 20px;
+  margin: 0 auto;
+}
