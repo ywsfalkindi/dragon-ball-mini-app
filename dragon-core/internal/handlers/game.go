@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"dragon-core/internal/database"
-	"dragon-core/internal/repositories"
+	"dragon-core/internal/repository"
 	"dragon-core/internal/services"
 	"fmt"
 	"time"
@@ -16,7 +16,7 @@ func GetQuestion(c *fiber.Ctx) error {
 
 	// 1. جلب السؤال (يمكن جعله عشوائياً لاحقاً)
 	questionID := uint(1) 
-	question, err := repositories.GetQuestionCached(questionID)
+	question, err := repository.GetQuestionCached(questionID)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"status": "error", "message": "No questions found"})
 	}

@@ -1,58 +1,46 @@
 package repository
 
 import (
+	"dragon-core/internal/models"
 	"errors"
-	"dragon-core/internal/domain"
 	"gorm.io/gorm"
 )
 
+// هيكل المستودع
 type userRepo struct {
 	db *gorm.DB
 }
 
-// NewUserRepo ينشئ نسخة جديدة من المستودع
-func NewUserRepo(db *gorm.DB) domain.UserRepo {
+// دالة الإنشاء
+func NewUserRepo(db *gorm.DB) *userRepo {
 	return &userRepo{db: db}
 }
 
-// Create ينشئ مستخدماً جديداً
-func (r *userRepo) Create(user *domain.User) error {
+// إنشاء مستخدم جديد
+func (r *userRepo) Create(user *models.User) error {
 	return r.db.Create(user).Error
 }
 
-// GetByTelegramID يبحث عن مستخدم بمعرف تليجرام
-func (r *userRepo) GetByTelegramID(id int64) (*domain.User, error) {
-	var user domain.User
-	// SELECT * FROM users WHERE telegram_id =? LIMIT 1
-	err := r.db.Where("telegram_id =?", id).First(&user).Error
-	if err!= nil {
+// البحث عن مستخدم بـ Telegram ID
+func (r *userRepo) GetByTelegramID(id int64) (*models.User, error) {
+	var user models.User
+	err := r.db.Where("telegram_id = ?", id).First(&user).Error
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil // لم يتم العثور عليه، ليس خطأ تقنياً
+			return nil, nil
 		}
 		return nil, err
 	}
 	return &user, nil
 }
 
-// GetByReferralCode يبحث عن مستخدم بكود الدعوة
-func (r *userRepo) GetByReferralCode(code string) (*domain.User, error) {
-	var user domain.User
-	err := r.db.Where("referral_code =?", code).First(&user).Error
-	if err!= nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-// Update يحفظ التعديلات
-func (r *userRepo) Update(user *domain.User) error {
+// تحديث بيانات المستخدم
+func (r *userRepo) Update(user *models.User) error {
 	return r.db.Save(user).Error
 }
 
-// IncrementScore يزيد نقاط المستخدم بشكل ذري (Atomic)
-// هذه الطريقة تمنع مشاكل التزامن (Race Conditions)
+// زيادة النقاط
 func (r *userRepo) IncrementScore(userID uint, points int64) error {
-	// UPDATE users SET score = score + points WHERE id = userID
-	return r.db.Model(&domain.User{}).Where("id =?", userID).
-		UpdateColumn("score", gorm.Expr("score +?", points)).Error
+	return r.db.Model(&models.User{}).Where("id = ?", userID).
+		UpdateColumn("total_score", gorm.Expr("total_score + ?", points)).Error
 }
