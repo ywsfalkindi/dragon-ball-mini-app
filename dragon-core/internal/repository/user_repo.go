@@ -44,3 +44,24 @@ func (r *userRepo) IncrementScore(userID uint, points int64) error {
 	return r.db.Model(&models.User{}).Where("id = ?", userID).
 		UpdateColumn("total_score", gorm.Expr("total_score + ?", points)).Error
 }
+
+func (r *userRepo) DecreaseEnergy(userID uint, amount int) (bool, error) {
+	// هذا الاستعلام يقول:
+	// "يا داتابيز، حاولي تحديث الطاقة بإنقاص قيمتها، 
+	// لكن بشرط: أن تكون الطاقة الحالية أكبر من أو تساوي المبلغ المطلوب"
+	result := r.db.Model(&models.User{}).
+		Where("id = ? AND energy >= ?", userID, amount).
+		UpdateColumn("energy", gorm.Expr("energy - ?", amount))
+
+	if result.Error != nil {
+		return false, result.Error
+	}
+
+	// RowsAffected: يخبرنا كم صف تأثر بالعملية؟
+	// إذا كان 0، فهذا يعني أن الشرط (energy >= amount) لم يتحقق، أي أن الطاقة غير كافية
+	if result.RowsAffected == 0 {
+		return false, nil // فشلت العملية (طاقة غير كافية)
+	}
+
+	return true, nil // نجحت العملية
+}
