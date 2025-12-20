@@ -6,11 +6,11 @@ import (
 
 	"dragon-core/internal/config"
 	"dragon-core/internal/database"
-	// "dragon-core/internal/domain" <--- سنستبدل هذا بـ models
 	"dragon-core/internal/models" // <--- الجديد: هنا توجد الجداول (User, Question, Score)
 	"dragon-core/internal/handlers"
 	"dragon-core/internal/middleware"
 	"dragon-core/internal/repository" // تأكد أن ملفات user_repo.go موجودة هنا
+	"dragon-core/internal/worker"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -38,6 +38,15 @@ func main() {
 		log.Fatalf("❌ Migration failed: %v", err)
 	}
 	log.Println("✅ Database tables migrated successfully")
+
+	log.Println("📥 Loading questions into Redis Cache...")
+	if err := repository.CacheAllQuestionIDs(); err != nil {
+		log.Printf("⚠️ Warning: Failed to cache questions: %v", err)
+	}
+
+	// ⚡ الجديد: تشغيل العامل في الخلفية
+	log.Println("👷 Starting Background Worker...")
+	worker.StartSyncWorker()
 
 	// 5. Repositories
 	// ملاحظة هامة: تأكد أن ملف 'internal/repository/user_repo.go' موجود وفيه دالة NewUserRepo

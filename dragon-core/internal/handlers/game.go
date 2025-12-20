@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"dragon-core/internal/database"
-	"dragon-core/internal/repository"
 	"dragon-core/internal/services"
 	"fmt"
 	"time"
@@ -14,21 +13,20 @@ import (
 func GetQuestion(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	// 1. جلب السؤال (يمكن جعله عشوائياً لاحقاً)
-	questionID := uint(1) 
-	question, err := repository.GetQuestionCached(questionID)
+	// التغيير: استخدام الدالة العشوائية بدلاً من ID ثابت
+	question, err := services.GetRandomQuestion(userID)
+	
 	if err != nil {
+		// إذا انتهت الأسئلة
+		if err.Error() == "no more questions available! you beat the game" {
+			return c.Status(404).JSON(fiber.Map{"status": "finished", "message": "You completed all training!"})
+		}
 		return c.Status(404).JSON(fiber.Map{"status": "error", "message": "No questions found"})
 	}
 
-	// 2. 🛡️ Security: بدء العداد الزمني في السيرفر (Redis)
-	// المفتاح: game:timer:{user_id}:{question_id}
+	// ... (باقي كود العداد الزمني Redis يبقى كما هو )
 	timerKey := fmt.Sprintf("game:timer:%d:%d", userID, question.ID)
-	
-	// نخزن وقت الآن بصيغة UnixNano (دقة عالية جداً)
 	now := time.Now().UnixMilli()
-	
-	// مدة صلاحية المفتاح قصيرة (مثلاً دقيقة واحدة) لتنظيف الذاكرة تلقائياً
 	database.RDB.Set(database.Ctx, timerKey, now, 2*time.Minute)
 
 	return c.Status(200).JSON(fiber.Map{
