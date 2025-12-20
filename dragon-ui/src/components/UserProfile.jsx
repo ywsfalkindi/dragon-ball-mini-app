@@ -22,9 +22,9 @@ const UserProfile = () => {
       }}
     >
       {/* صورة المستخدم */}
-      {user.photoUrl ? (
+      {user.photo_url ? (
         <img
-          src={user.photoUrl}
+          src={user.photo_url}
           alt="User"
           style={{
             width: "40px",
@@ -53,7 +53,7 @@ const UserProfile = () => {
       {/* الاسم والرتبة */}
       <div>
         <div style={{ fontWeight: "bold", fontSize: "14px" }}>
-          {user.firstName}
+          {user.first_name}
         </div>
         <div style={{ fontSize: "11px", color: "var(--db-orange)" }}>
           Warrior ID: {user.id}

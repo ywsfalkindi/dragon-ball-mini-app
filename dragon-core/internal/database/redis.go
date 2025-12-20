@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -15,17 +16,22 @@ var RDB *redis.Client
 var Ctx = context.Background()
 
 func ConnectRedis() {
+	// نقرأ عنوان Redis من البيئة، وإذا لم نجد نستخدم اللوكال
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
 	RDB = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379", // عنوان دوكر
-		Password: "",               // لا توجد كلمة مرور افتراضياً
-		DB:       0,                // قاعدة البيانات الافتراضية
+		Addr:     redisAddr, 
+		Password: "", 
+		DB:       0,
 	})
 
-	// تجربة الاتصال (Ping)
 	_, err := RDB.Ping(Ctx).Result()
 	if err != nil {
 		log.Fatal("🔴 Failed to connect to Redis:", err)
 	}
 
-	fmt.Println("⚡ Redis (Ultra Instinct) is ready!")
+	fmt.Println("⚡ Redis is ready! Connected to:", redisAddr)
 }
