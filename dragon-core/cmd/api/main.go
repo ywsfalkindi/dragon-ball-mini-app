@@ -1,61 +1,49 @@
 package main
 
 import (
-	"context"
+	// "context" <--- تم حذف هذا السطر لأنه غير مستخدم ويسبب خطأ
 	"log"
 
 	"dragon-core/internal/config"
-	"dragon-core/internal/domain"
-	"dragon-core/internal/repository" // استيراد المستودعات الجديدة
-	"dragon-core/pkg/postgres"
+	"dragon-core/internal/database"
+	// "dragon-core/internal/domain" <--- سنستبدل هذا بـ models
+	"dragon-core/internal/models" // <--- الجديد: هنا توجد الجداول (User, Question, Score)
+	"dragon-core/internal/handlers"
+	"dragon-core/internal/middleware"
+	"dragon-core/internal/repository" // تأكد أن ملفات user_repo.go موجودة هنا
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/redis/go-redis/v9" // استيراد عميل Redis
 )
 
 func main() {
 	// 1. Config
 	cfg, err := config.LoadConfig()
-	if err!= nil {
+	if err != nil {
 		log.Fatalf("❌ Config error: %v", err)
 	}
 
 	// 2. Database
-	db, err := postgres.NewConnection(cfg)
-	if err!= nil {
-		log.Fatalf("❌ DB error: %v", err)
-	}
+	database.ConnectDB(cfg)
 
-	// 3. Redis Setup (جديد)
-	// نقوم بإنشاء اتصال Redis هنا
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379", // في الإنتاج، اجعل هذا في الـ config
-		Password: "",               // لا توجد كلمة مرور افتراضياً
-		DB:       0,                // استخدام الداتابيز الافتراضية
-	})
-	// اختبار اتصال Redis
-	if _, err := rdb.Ping(context.Background()).Result(); err!= nil {
-		log.Fatalf("❌ Redis connection failed: %v", err)
-	}
-	log.Println("✅ Redis connected (Ultra Instinct Ready)")
+	// 3. Redis
+	database.ConnectRedis()
 
-	// 4. Migrations (ترحيل الجداول)
-	// الآن نقوم بإنشاء جدولي Users و Matches
-	err = db.AutoMigrate(&domain.User{}, &domain.Match{})
-	if err!= nil {
+	// 4. Migrations
+	// التصحيح: نستخدم models بدلاً من domain لأن الجداول معرفة هناك
+	err = database.DB.AutoMigrate(&models.User{}, &models.Match{}, &models.Question{}, &models.Score{})
+	if err != nil {
 		log.Fatalf("❌ Migration failed: %v", err)
 	}
 	log.Println("✅ Database tables migrated successfully")
 
-	// 5. تهيئة المستودعات (Dependency Injection)
-	// نجهز هذه المتغيرات لاستخدامها لاحقاً في الـ Handlers
-	userRepo := repository.NewUserRepo(db)
-	leaderboardRepo := repository.NewLeaderboardRepo(rdb)
+	// 5. Repositories
+	// ملاحظة هامة: تأكد أن ملف 'internal/repository/user_repo.go' موجود وفيه دالة NewUserRepo
+	userRepo := repository.NewUserRepo(database.DB)
+	leaderboardRepo := repository.NewLeaderboardRepo(database.RDB)
 
-	// (سنتجاهل تحذير "المتغير غير مستخدم" مؤقتاً لأننا سنستخدمهم في الفصل القادم)
 	_ = userRepo
 	_ = leaderboardRepo
 
@@ -63,14 +51,24 @@ func main() {
 	app := fiber.New()
 	app.Use(logger.New())
 	app.Use(recover.New())
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+	}))
 
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok", "db": "connected", "redis": "connected"})
-	})
+	// Routes
+	api := app.Group("/api")
+	api.Get("/health", handlers.HealthCheck)
+	api.Post("/auth/login", handlers.Login)
+
+	protected := api.Group("/protected")
+	protected.Use(middleware.Protected())
+	
+	protected.Get("/question", handlers.GetQuestion)
+	protected.Post("/answer", handlers.SubmitAnswer)
 
 	log.Printf("🚀 Server running on port %s", cfg.AppPort)
-	if err := app.Listen(":" + cfg.AppPort); err!= nil {
+	if err := app.Listen(":" + cfg.AppPort); err != nil {
 		log.Fatalf("❌ Server error: %v", err)
 	}
 }

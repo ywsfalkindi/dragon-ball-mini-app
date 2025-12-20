@@ -1,28 +1,31 @@
 import axios from "axios";
-import WebApp from "@twa-dev/sdk"; // تأكد من استيراد هذا
 
 export const apiClient = axios.create({
-  baseURL: "http://localhost:3000/api",
+  baseURL: "http://localhost:3000/api", // تأكد أن هذا الرابط صحيح
   headers: {
     "Content-Type": "application/json",
     "ngrok-skip-browser-warning": "true",
   },
 });
 
-// --- هذا هو الجزء الناقص ---
-apiClient.interceptors.request.use((config) => {
-  // 1. محاولة جلب بيانات تليجرام الحقيقية
-  const initData = WebApp.initData;
+// Interceptor: يعترض كل طلب قبل خروجه ويضيف التوكن
+apiClient.interceptors.request.use(
+  (config) => {
+    // 1. نحاول جلب التوكن المحفوظ في المتصفح
+    const token = localStorage.getItem("dragon_token");
 
-  if (initData) {
-    // إذا كنا داخل تليجرام، أرسل التوكن الحقيقي
-    config.headers.Authorization = initData;
-  } else {
-    // 2. وضع المطور (Localhost):
-    // إذا كنا نختبر في المتصفح، نرسل توكن "وهمي" لكي لا يرفضنا السيرفر
-    // ملاحظة: ستحتاج لتعطيل التحقق في السيرفر مؤقتاً لقبول هذا، أو استخدام بيانات حقيقية
-    config.headers.Authorization = "test-token-for-goku";
+    // 2. إذا وجدنا توكن، والطلب ليس "تسجيل دخول"، نضيفه في الهيدر
+    if (token && !config.url.includes("/auth/login")) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    // 3. (اختياري) وضع المطور: توكن وهمي إذا لم نجد توكن حقيقي وكنا في وضع التطوير
+    else if (!token && import.meta.env.DEV) {
+      // config.headers.Authorization = "test-token-for-goku"; // يمكنك تفعيل هذا للتجربة السريعة
+    }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-
-  return config;
-});
+);

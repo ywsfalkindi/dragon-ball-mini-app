@@ -9,9 +9,9 @@ import WebApp from "@twa-dev/sdk";
 import UserProfile from "./components/UserProfile";
 
 function App() {
-  // تم إزالة user من هنا لأنه مستخدم فقط داخل مكون UserProfile المستقل
   const {
-    setUser,
+    login, // دالة اللوجن الجديدة
+    user,
     fetchQuestion,
     currentQuestion,
     submitAnswer,
@@ -20,40 +20,33 @@ function App() {
   } = useGameStore();
 
   const [isWrong, setIsWrong] = useState(false);
+  const [isAuth, setIsAuth] = useState(false); // هل تم تسجيل الدخول؟
 
+  // 1. عند تشغيل التطبيق، قم بتهيئة تليجرام وسجل الدخول
   useEffect(() => {
-    if (WebApp.initDataUnsafe.user) {
-      WebApp.ready();
-      WebApp.expand();
-      WebApp.setHeaderColor("#000000");
+    WebApp.ready();
+    WebApp.expand();
+    WebApp.setHeaderColor("#000000");
 
-      setUser({
-        id: WebApp.initDataUnsafe.user.id,
-        firstName: WebApp.initDataUnsafe.user.first_name,
-        username: WebApp.initDataUnsafe.user.username,
-        photoUrl: WebApp.initDataUnsafe.user.photo_url,
-      });
-    } else {
-      setUser({
-        id: 1,
-        firstName: "Test Goku",
-        username: "kakarot",
-        photoUrl: null,
-      });
-    }
-  }, [setUser]);
+    const initGame = async () => {
+      const success = await login();
+      if (success) {
+        setIsAuth(true);
+      }
+    };
 
+    initGame();
+  }, [login]); // يتم التشغيل مرة واحدة
+
+  // 2. بمجرد تسجيل الدخول بنجاح، اجلب السؤال
   useEffect(() => {
-    if (!currentQuestion) {
+    if (isAuth && !currentQuestion) {
       fetchQuestion();
     }
-  }, [fetchQuestion, currentQuestion]);
+  }, [isAuth, fetchQuestion, currentQuestion]);
 
   const handleAnswer = async (selectedKey) => {
-    if (WebApp.initDataUnsafe.user) {
-      WebApp.HapticFeedback.impactOccurred("light");
-    }
-
+    WebApp.HapticFeedback.impactOccurred("light");
     const isCorrect = await submitAnswer(selectedKey);
 
     if (isCorrect) {
@@ -97,7 +90,8 @@ function App() {
           marginTop: "20px",
         }}
       >
-        {isLoading && !currentQuestion && (
+        {/* شاشة التحميل تظهر عند جلب السؤال أو عند محاولة تسجيل الدخول */}
+        {(isLoading || !isAuth) && !currentQuestion && !error && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -109,11 +103,7 @@ function App() {
               fontWeight: "bold",
             }}
           >
-            جاري استدعاء التنين... 🐉
-            <br />
-            <span style={{ fontSize: "12px", color: "gray" }}>
-              (Connecting to Namek...)
-            </span>
+            {!isAuth ? "جاري الاتصال بالسيرفر..." : "جاري استدعاء التنين... 🐉"}
           </motion.div>
         )}
 
