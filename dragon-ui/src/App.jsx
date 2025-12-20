@@ -46,15 +46,24 @@ function App() {
   }, [isAuth, fetchQuestion, currentQuestion]);
 
   const handleAnswer = async (selectedKey) => {
+    // اهتزازة خفيفة جداً عند الضغط (Feedback فوري)
     WebApp.HapticFeedback.impactOccurred("light");
+
+    // ننتظر النتيجة (بينما الواجهة قد تم تحديثها وهمياً بالفعل)
     const isCorrect = await submitAnswer(selectedKey);
 
     if (isCorrect) {
+      // ✅ فوز: اهتزازة نجاح (ناعمة)
+      WebApp.HapticFeedback.notificationOccurred("success");
+
       setTimeout(() => {
         setIsWrong(false);
         fetchQuestion();
       }, 500);
     } else {
+      // ❌ خسارة: اهتزازة خطأ (قوية)
+      WebApp.HapticFeedback.notificationOccurred("error");
+
       setIsWrong(true);
       setTimeout(() => setIsWrong(false), 500);
     }

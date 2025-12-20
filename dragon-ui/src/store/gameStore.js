@@ -60,27 +60,42 @@ const useGameStore = create(
       },
 
       submitAnswer: async (selectedOptionKey) => {
-        const { currentQuestion } = get();
+        const { currentQuestion, energy } = get(); // نحتاج الطاقة الحالية
         if (!currentQuestion) return false;
 
+        // 1. Snapshot: نحفظ نسخة من الطاقة الحالية (للعودة إليها في حال الخطأ)
+        const previousEnergy = energy;
+
+        // 2. Optimistic Update: نخصم الطاقة فوراً في الواجهة! 👊
+        // اللاعب يرى الطاقة تنقص في جزء من الثانية
+        set((state) => ({ energy: Math.max(0, state.energy - 1) }));
+
         try {
-          // 2. إصلاح البيانات المرسلة (إزالة time_taken)
           const payload = {
             question_id: currentQuestion.id,
             selected: selectedOptionKey,
-            // time_taken: removed (Backend calculates it now!)
           };
 
+          // 3. نرسل الطلب للسيرفر في الخلفية
           const response = await apiClient.post("/protected/answer", payload);
           const result = response.data;
 
+          // 4. Sync: نحدث البيانات الحقيقية القادمة من السيرفر
+          // (غالباً ستكون نفس الطاقة التي توقعناها، ولكن السكور سيزيد)
           set({
             score: result.new_score,
-            energy: result.new_energy,
+            energy: result.new_energy, // تأكيد الطاقة من السيرفر
           });
           return result.correct;
         } catch (err) {
           console.error("Answer Error:", err);
+
+          // 5. Rollback: حدث خطأ! تراجع فوراً! ↩️
+          // نعيد الطاقة للاعب وكأن شيئاً لم يحدث
+          set({ energy: previousEnergy });
+
+          // نظهر رسالة خطأ
+          WebApp.showAlert("خطأ في الاتصال! تمت إعادة طاقة الكي الخاصة بك.");
           return false;
         }
       },
