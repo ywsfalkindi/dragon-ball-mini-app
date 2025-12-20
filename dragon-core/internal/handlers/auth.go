@@ -81,3 +81,47 @@ func Login(c *fiber.Ctx) error {
 		"user":          user,
 	})
 }
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func RefreshToken(c *fiber.Ctx) error {
+	var req RefreshRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	// 1. التحقق من صلاحية التوكن (هل انتهت مدته الـ 7 أيام؟)
+	userID, err := auth.ValidateRefreshToken(req.RefreshToken)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid or expired refresh token"})
+	}
+
+	// 2. التحقق من قاعدة البيانات (هل تم طرد المستخدم أو تغيير التوكن؟)
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	// تحقق أمني هام: هل التوكن المرسل هو نفسه المحفوظ في الداتابيز؟
+	// إذا كان مختلفاً، فهذا يعني أن المستخدم سجل خروجاً أو تم سرقة التوكن!
+	if user.RefreshToken != req.RefreshToken {
+		return c.Status(401).JSON(fiber.Map{"error": "Token mismatch! Please login again"})
+	}
+
+	// 3. تدوير التوكنات (Token Rotation) - لمزيد من الأمان نعطي توكنات جديدة كلياً
+	newAccessToken, newRefreshToken, err := auth.GenerateTokens(user.ID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Could not generate tokens"})
+	}
+
+	// 4. تحديث الـ Refresh Token الجديد في الداتابيز
+	user.RefreshToken = newRefreshToken
+	database.DB.Save(&user)
+
+	return c.JSON(fiber.Map{
+		"access_token":  newAccessToken,
+		"refresh_token": newRefreshToken,
+	})
+}

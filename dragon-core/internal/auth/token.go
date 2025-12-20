@@ -65,3 +65,22 @@ func ValidateAccessToken(tokenString string) (uint, error) {
 
 	return claims.UserID, nil
 }
+
+func ValidateRefreshToken(tokenString string) (uint, error) {
+	refreshSecret := []byte(os.Getenv("JWT_REFRESH_SECRET"))
+	claims := &Claims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return refreshSecret, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	if !token.Valid {
+		return 0, errors.New("invalid refresh token")
+	}
+
+	return claims.UserID, nil
+}

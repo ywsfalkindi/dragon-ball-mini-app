@@ -60,6 +60,7 @@ func main() {
 	api := app.Group("/api")
 	api.Get("/health", handlers.HealthCheck)
 	api.Post("/auth/login", handlers.Login)
+	api.Post("/auth/refresh", handlers.RefreshToken)
 
 	protected := api.Group("/protected")
 	protected.Use(middleware.Protected())
