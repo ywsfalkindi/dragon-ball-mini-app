@@ -46,26 +46,28 @@ function App() {
   }, [isAuth, fetchQuestion, currentQuestion]);
 
   const handleAnswer = async (selectedKey) => {
-    // اهتزازة خفيفة جداً عند الضغط (Feedback فوري)
+    // اهتزازة خفيفة جداً عند الضغط
     WebApp.HapticFeedback.impactOccurred("light");
 
-    // ننتظر النتيجة (بينما الواجهة قد تم تحديثها وهمياً بالفعل)
     const isCorrect = await submitAnswer(selectedKey);
 
     if (isCorrect) {
-      // ✅ فوز: اهتزازة نجاح (ناعمة)
+      // ✅ فوز: اهتزازة نجاح
       WebApp.HapticFeedback.notificationOccurred("success");
-
       setTimeout(() => {
         setIsWrong(false);
-        fetchQuestion();
+        fetchQuestion(); // جلب سؤال جديد
       }, 500);
     } else {
-      // ❌ خسارة: اهتزازة خطأ (قوية)
+      // ❌ خسارة: اهتزازة خطأ
       WebApp.HapticFeedback.notificationOccurred("error");
-
       setIsWrong(true);
-      setTimeout(() => setIsWrong(false), 500);
+
+      // 👇 التعديل الهام هنا: ننتظر قليلاً ليرى اللاعب أنه أخطأ، ثم نجلب السؤال التالي
+      setTimeout(() => {
+        setIsWrong(false);
+        fetchQuestion(); // <--- هذا السطر كان ناقصاً!
+      }, 1000); // زدنا الوقت لثانية لكي يلاحظ اللاعب اللون الأحمر
     }
   };
 
