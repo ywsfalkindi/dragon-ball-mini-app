@@ -1,67 +1,76 @@
 package main
 
 import (
+	"context"
 	"log"
-	"dragon-core/internal/database"
-	"dragon-core/internal/handlers"
-	"dragon-core/internal/models"
-	"dragon-core/internal/repositories"
-	"dragon-core/internal/middleware"
+
+	"dragon-core/internal/config"
+	"dragon-core/internal/domain"
+	"dragon-core/internal/repository" // استيراد المستودعات الجديدة
+	"dragon-core/pkg/postgres"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/cors" // المكتبة المستدعاة
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/redis/go-redis/v9" // استيراد عميل Redis
 )
 
 func main() {
-	// 1. الاتصال بقواعد البيانات
-	database.ConnectDB()
-	database.ConnectRedis()
-	database.DB.AutoMigrate(&models.User{}, &models.Score{}, &models.Question{})
-
-	// --- كود تجريبي لاختبار الكاش ---
-	q1 := models.Question{
-		ID:           1,
-		QuestionText: "Who is Goku's father?",
-		OptionA:      "Vegeta",
-		OptionB:      "Bardock",
-		OptionC:      "Nappa",
-		OptionD:      "King Vegeta",
-		CorrectOption: "B",
+	// 1. Config
+	cfg, err := config.LoadConfig()
+	if err!= nil {
+		log.Fatalf("❌ Config error: %v", err)
 	}
-	database.DB.Save(&q1) 
 
-	log.Println("--- Testing Cache System ---")
-	repositories.GetQuestionCached(1)
-	repositories.GetQuestionCached(1)
-	log.Println("---------------------------")
+	// 2. Database
+	db, err := postgres.NewConnection(cfg)
+	if err!= nil {
+		log.Fatalf("❌ DB error: %v", err)
+	}
 
-	// 2. إعداد سيرفر Fiber
-	app := fiber.New(fiber.Config{
-		AppName: "Dragon Ball Bot API",
+	// 3. Redis Setup (جديد)
+	// نقوم بإنشاء اتصال Redis هنا
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379", // في الإنتاج، اجعل هذا في الـ config
+		Password: "",               // لا توجد كلمة مرور افتراضياً
+		DB:       0,                // استخدام الداتابيز الافتراضية
 	})
+	// اختبار اتصال Redis
+	if _, err := rdb.Ping(context.Background()).Result(); err!= nil {
+		log.Fatalf("❌ Redis connection failed: %v", err)
+	}
+	log.Println("✅ Redis connected (Ultra Instinct Ready)")
 
-	// تفعيل الـ CORS (هذا السطر سيحل المشكلة)
-	// يسمح للمتصفحات (وتطبيق تليجرام) بطلب البيانات من السيرفر
+	// 4. Migrations (ترحيل الجداول)
+	// الآن نقوم بإنشاء جدولي Users و Matches
+	err = db.AutoMigrate(&domain.User{}, &domain.Match{})
+	if err!= nil {
+		log.Fatalf("❌ Migration failed: %v", err)
+	}
+	log.Println("✅ Database tables migrated successfully")
+
+	// 5. تهيئة المستودعات (Dependency Injection)
+	// نجهز هذه المتغيرات لاستخدامها لاحقاً في الـ Handlers
+	userRepo := repository.NewUserRepo(db)
+	leaderboardRepo := repository.NewLeaderboardRepo(rdb)
+
+	// (سنتجاهل تحذير "المتغير غير مستخدم" مؤقتاً لأننا سنستخدمهم في الفصل القادم)
+	_ = userRepo
+	_ = leaderboardRepo
+
+	// 6. Fiber App
+	app := fiber.New()
+	app.Use(logger.New())
+	app.Use(recover.New())
 	app.Use(cors.New())
 
-	app.Use(logger.New())
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "ok", "db": "connected", "redis": "connected"})
+	})
 
-	api := app.Group("/api")
-	
-	// هذا مسار عام (مفتوح للجميع) ليتمكنوا من تسجيل الدخول
-	api.Post("/login", handlers.Login) // <--- أضف هذا السطر الجديد
-
-	api.Get("/health", handlers.HealthCheck)
-	api.Get("/question", handlers.GetQuestion)
-	
-	protected := api.Group("/protected", middleware.Protected())
-	protected.Post("/answer", handlers.SubmitAnswer)
-
-	log.Println("🔥 Server is going Super Saiyan on port 3000...")
-	
-	err := app.Listen(":3000")
-	if err != nil {
-		log.Fatal("Error starting server: ", err)
+	log.Printf("🚀 Server running on port %s", cfg.AppPort)
+	if err := app.Listen(":" + cfg.AppPort); err!= nil {
+		log.Fatalf("❌ Server error: %v", err)
 	}
 }
