@@ -1,5 +1,5 @@
 # 1. نستخدم نسخة Go خفيفة للبناء
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # نحدد مجلد العمل داخل السيرفر
 WORKDIR /app
