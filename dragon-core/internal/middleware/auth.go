@@ -35,7 +35,7 @@ func Protected() fiber.Handler {
 		tokenString := strings.Replace(authHeader, "Bearer ", "", 1)
 
 		// التحقق من صحة التوكن
-		userID, err := auth.ValidateToken(tokenString)
+		userID, err := auth.ValidateAccessToken(tokenString)
 		if err != nil {
 			return c.Status(401).JSON(fiber.Map{"status": "error", "message": "Invalid or Expired Token"})
 		}

@@ -8,50 +8,51 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// مفتاح التشفير السري الخاص بالسيرفر
-// ناخذه من متغيرات البيئة، وإذا لم نجد، نستخدم مفتاح احتياطي (فقط للتطوير)
-var jwtSecret = []byte(getSecretEnv())
-
-func getSecretEnv() string {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return "super-secret-dragon-ball-key-change-me" // ⚠️ يجب تغييره في الإنتاج
-	}
-	return secret
-}
-
-// هذه البيانات التي سنخبئها داخل التوكن
 type Claims struct {
 	UserID uint `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
-// GenerateToken: دالة تصنع التوكن للمستخدم
-func GenerateToken(userID uint) (string, error) {
-	// تحديد صلاحية التوكن (مثلاً 7 أيام)
-	expirationTime := time.Now().Add(7 * 24 * time.Hour)
-
-	// تعبئة البيانات
-	claims := &Claims{
+// GenerateTokens: يصنع مفتاحين بدلاً من واحد
+func GenerateTokens(userID uint) (string, string, error) {
+	// 1. Access Token (عمر قصير: 15 دقيقة)
+	accessSecret := []byte(os.Getenv("JWT_ACCESS_SECRET"))
+	accessClaims := Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(accessSecret)
+	if err != nil {
+		return "", "", err
+	}
 
-	// التوقيع على التوكن باستخدام خوارزمية HS256 ومفتاحنا السري
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
+	// 2. Refresh Token (عمر طويل: 7 أيام)
+	refreshSecret := []byte(os.Getenv("JWT_REFRESH_SECRET"))
+	refreshClaims := Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString(refreshSecret)
+	if err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
 }
 
-// ValidateToken: دالة تفحص التوكن وتستخرج منه هوية المستخدم
-func ValidateToken(tokenString string) (uint, error) {
+// ValidateAccessToken: يفحص التوكن القصير فقط
+func ValidateAccessToken(tokenString string) (uint, error) {
+	accessSecret := []byte(os.Getenv("JWT_ACCESS_SECRET"))
 	claims := &Claims{}
 
-	// محاولة فك التشفير
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
+		return accessSecret, nil
 	})
 
 	if err != nil {
@@ -62,6 +63,5 @@ func ValidateToken(tokenString string) (uint, error) {
 		return 0, errors.New("invalid token")
 	}
 
-	// نجاح! أرجع رقم المستخدم
 	return claims.UserID, nil
 }

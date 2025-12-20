@@ -2,18 +2,18 @@ package handlers
 
 import (
 	"dragon-core/internal/auth"
+	"dragon-core/internal/database"
 	"dragon-core/internal/models"
-	"dragon-core/internal/repositories"
 	"encoding/json"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-// LoginRequest: الهيكل الذي نتوقعه من الـ Frontend
 type LoginRequest struct {
-	InitData string `json:"init_data"` // نص تليجرام الطويل
+	InitData string `json:"init_data"`
 }
 
 func Login(c *fiber.Ctx) error {
@@ -22,62 +22,62 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
-	// 1. التحقق من صحة البيانات القادمة من تليجرام
-	botToken := os.Getenv("BOT_TOKEN") // ⚠️ يجب أن يكون في متغيرات البيئة
-	if botToken == "" {
-        // تنبيه: للتجربة فقط سنستخدم التوكن القديم إذا لم نجد متغير بيئة
-		botToken = "8561338309:AAG1WFHGJgsh4ZkKMWviAhUhJHK2qWKOdJg"
-	}
-
+	// 1. الأمان: التحقق من التوقيع ومنع التكرار
+	botToken := os.Getenv("BOT_TOKEN")
 	isValid, err := auth.ValidateWebAppData(req.InitData, botToken)
 	if err != nil || !isValid {
-		return c.Status(401).JSON(fiber.Map{"error": "Invalid Telegram data: " + err.Error()})
+		return c.Status(401).JSON(fiber.Map{"error": "Security Alert: " + err.Error()})
 	}
 
-	// 2. استخراج بيانات المستخدم من النص
-	// data=...&user={"id":123,"first_name":"Goku",...}&...
+	// 2. استخراج البيانات
 	parsedData, _ := url.ParseQuery(req.InitData)
 	userJSON := parsedData.Get("user")
-	
 	type TelegramUser struct {
 		ID        int64  `json:"id"`
 		FirstName string `json:"first_name"`
 		Username  string `json:"username"`
+		PhotoURL  string `json:"photo_url"`
 	}
 	var tgUser TelegramUser
 	json.Unmarshal([]byte(userJSON), &tgUser)
 
-	// 3. البحث عن المستخدم في الداتابيز أو إنشاؤه
-	user, err := repositories.GetUserByTelegramID(tgUser.ID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
-	}
+	// 3. الداتابيز: إيجاد أو إنشاء المقاتل
+	var user models.User
+	result := database.DB.Where("telegram_id = ?", tgUser.ID).First(&user)
 
-	var userID uint
-	if user == nil {
-		// مستخدم جديد! لنقم بتسجيله
-		newUser := models.User{
+	if result.Error != nil {
+		// مستخدم جديد
+		user = models.User{
 			TelegramID: tgUser.ID,
 			Username:   tgUser.Username,
-			// Energy: 10 (افتراضي من الداتابيز) [cite: 36]
+			FirstName:  tgUser.FirstName,
+			PhotoURL:   tgUser.PhotoURL,
+			Energy:     10, // طاقة البداية
+			LastLoginAt: time.Now(),
 		}
-		if err := repositories.CreateUser(&newUser); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Could not create user"})
-		}
-		userID = newUser.ID
+		database.DB.Create(&user)
 	} else {
-		userID = user.ID
+		// تحديث وقت الدخول والصورة
+		user.LastLoginAt = time.Now()
+		user.PhotoURL = tgUser.PhotoURL
+		user.FirstName = tgUser.FirstName
+		// لا نحفظ هنا لأننا سنحفظ التوكن في الخطوة التالية
 	}
 
-	// 4. إنشاء الـ JWT (جواز السفر)
-	token, err := auth.GenerateToken(userID)
+	// 4. توليد المفاتيح (Access & Refresh)
+	accessToken, refreshToken, err := auth.GenerateTokens(user.ID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Could not generate token"})
+		return c.Status(500).JSON(fiber.Map{"error": "Token generation failed"})
 	}
 
-	// 5. الرد بالتوكن
+	// 5. حفظ الـ Refresh Token في الداتابيز (للطرد عند الحاجة)
+	user.RefreshToken = refreshToken
+	database.DB.Save(&user)
+
+	// 6. الرد النهائي
 	return c.JSON(fiber.Map{
-		"token": token,
-		"user":  user, // نعيد بيانات المستخدم أيضاً
+		"access_token":  accessToken,  // يستخدم للطلبات (صلاحية 15 دقيقة)
+		"refresh_token": refreshToken, // خبه في الجهاز لتجديد الجلسة
+		"user":          user,
 	})
 }

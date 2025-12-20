@@ -1,59 +1,65 @@
 package handlers
 
 import (
+	"dragon-core/internal/database"
 	"dragon-core/internal/repositories"
 	"dragon-core/internal/services"
+	"fmt"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 )
 
-// 1. GET /api/question
-// دالة لجلب سؤال (حالياً نجلب السؤال رقم 1 دائماً للتجربة)
+// GET /api/question
 func GetQuestion(c *fiber.Ctx) error {
-	// مستقبلاً سنجعل الرقم عشوائياً
-	// حالياً نطلب السؤال رقم 1 الذي خزنّاه في الفصل السابق
-	question, err := repositories.GetQuestionCached(1)
-	
+	userID := c.Locals("userID").(uint)
+
+	// 1. جلب السؤال (يمكن جعله عشوائياً لاحقاً)
+	questionID := uint(1) 
+	question, err := repositories.GetQuestionCached(questionID)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{
-			"status": "error", 
-			"message": "Question not found, maybe Dragon Balls are inert?",
-		})
+		return c.Status(404).JSON(fiber.Map{"status": "error", "message": "No questions found"})
 	}
+
+	// 2. 🛡️ Security: بدء العداد الزمني في السيرفر (Redis)
+	// المفتاح: game:timer:{user_id}:{question_id}
+	timerKey := fmt.Sprintf("game:timer:%d:%d", userID, question.ID)
+	
+	// نخزن وقت الآن بصيغة UnixNano (دقة عالية جداً)
+	now := time.Now().UnixMilli()
+	
+	// مدة صلاحية المفتاح قصيرة (مثلاً دقيقة واحدة) لتنظيف الذاكرة تلقائياً
+	database.RDB.Set(database.Ctx, timerKey, now, 2*time.Minute)
 
 	return c.Status(200).JSON(fiber.Map{
 		"status": "success",
-		"data": question,
+		"data":   question,
 	})
 }
 
+// POST /api/protected/answer
 func SubmitAnswer(c *fiber.Ctx) error {
-    // 1. استخراج هوية المستخدم المؤمنة من الـ Middleware
-    // (يجب تحويلها لأن Locals تخزنها كـ interface)
-    userIDFromToken := c.Locals("userID").(uint)
+	userID := c.Locals("userID").(uint)
 
-    type RequestWithTime struct {
-        // لم نعد نحتاج UserID هنا، نحذفه من الهيكل أو نتجاهله
-        QuestionID uint   `json:"question_id"`
-        Selected   string `json:"selected"`
-        TimeTaken  int    `json:"time_taken"`
-    }
+	// الهيكل لم يعد يحتاج TimeTaken لأن السيرفر سيحسبه
+	type AnswerRequest struct {
+		QuestionID uint   `json:"question_id"`
+		Selected   string `json:"selected"`
+	}
 
-    var req RequestWithTime
-    if err := c.BodyParser(&req); err != nil {
-        return c.Status(400).JSON(fiber.Map{"status": "error", "message": "Invalid input"})
-    }
+	var req AnswerRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"status": "error", "message": "Invalid input"})
+	}
 
-    // 2. استخدام ID الموثوق به بدلاً من req.UserID
-    response, err := services.ProcessAnswer(userIDFromToken, req.QuestionID, req.Selected, req.TimeTaken)
-	
+	// استدعاء الخدمة لمعالجة الإجابة
+	response, err := services.ProcessAnswer(userID, req.QuestionID, req.Selected)
 	if err != nil {
-		// معالجة الأخطاء (مثل نفاذ الطاقة)
 		return c.Status(400).JSON(fiber.Map{
-			"status": "error",
+			"status":  "error",
 			"message": err.Error(),
 		})
 	}
 
-	// 3. الرد
 	return c.Status(200).JSON(response)
 }
